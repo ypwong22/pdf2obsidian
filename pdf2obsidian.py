@@ -20,11 +20,12 @@ def safe_name(text: str, limit: int = 60) -> str:
     return text[:limit] if limit else text
 
 
-def prompt_for_metadata(pdf_path: Path) -> dict:
+def prompt_for_metadata(pdf_path: Path, defaults: Optional[Dict[str, str]] = None) -> dict:
+    defaults = defaults or {}
     print(f"\n📄 Processing file: {pdf_path.name}")
-    authors = input("请输入 <=3 个作者的 last name (逗号分隔): ").strip()
-    year = input("请输入年份: ").strip()
-    journal = input("请输入期刊简称: ").strip()
+    authors = defaults.get("authors") or input("请输入 <=3 个作者的 last name (逗号分隔): ").strip()
+    year = defaults.get("year") or input("请输入年份: ").strip()
+    journal = defaults.get("journal") or input("请输入期刊简称: ").strip()
 
     authors_list = [a.strip() for a in authors.split(",") if a.strip()]
     if len(authors_list) > 3:
@@ -286,8 +287,8 @@ def write_obsidian_bundle(data: Dict[str, Any], meta: Dict[str, Any], out_root: 
 
 # ---------- 顶层流程 ----------
 
-def process_single_pdf(pdf_path: Path, out_root: Path) -> Optional[str]:
-    meta = prompt_for_metadata(pdf_path)
+def process_single_pdf(pdf_path: Path, out_root: Path, defaults: Optional[Dict[str, str]] = None) -> Optional[str]:
+    meta = prompt_for_metadata(pdf_path, defaults)
 
     with tempfile.TemporaryDirectory(prefix="mineru_out_") as tmpd:
         tmp_dir = Path(tmpd)
@@ -302,15 +303,15 @@ def process_single_pdf(pdf_path: Path, out_root: Path) -> Optional[str]:
     return folder_name
 
 
-def batch_process(pdf_input: Path, out_root: Path) -> List[str]:
+def batch_process(pdf_input: Path, out_root: Path, defaults: Optional[Dict[str, str]] = None) -> List[str]:
     created: List[str] = []
     if pdf_input.is_file() and pdf_input.suffix.lower() == ".pdf":
-        name = process_single_pdf(pdf_input, out_root)
+        name = process_single_pdf(pdf_input, out_root, defaults)
         if name:
             created.append(name)
     elif pdf_input.is_dir():
         for pdf in sorted(pdf_input.glob("*.pdf")):
-            name = process_single_pdf(pdf, out_root)
+            name = process_single_pdf(pdf, out_root, defaults)
             if name:
                 created.append(name)
     else:
@@ -336,13 +337,23 @@ def main():
     parser = argparse.ArgumentParser(description="Extract PDFs into Obsidian-ready folders with minerU")
     parser.add_argument("-i", "--input", required=True, help="Input PDF file or folder")
     parser.add_argument("-o", "--output", required=True, help="Output folder (Obsidian vault subfolder)")
+    parser.add_argument("authors", nargs="?", help="Authors (comma separated)")
+    parser.add_argument("year", nargs="?", help="Year")
+    parser.add_argument("journal", nargs="?", help="Journal abbreviation")
     args = parser.parse_args()
+
+    print(args)
 
     pdf_input = Path(args.input).expanduser().resolve()
     out_root = Path(args.output).expanduser().resolve()
     ensure_dir(out_root)
 
-    created = batch_process(pdf_input, out_root)
+    defaults = {}
+    if args.authors: defaults["authors"] = args.authors
+    if args.year: defaults["year"] = args.year
+    if args.journal: defaults["journal"] = args.journal
+
+    created = batch_process(pdf_input, out_root, defaults)
     update_index(out_root, created)
 
 
